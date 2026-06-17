@@ -1,5 +1,5 @@
 {
-  "review_id": "f7bd458c-ff36-45ad-aebb-8935c861f580",
+  "review_id": "2166ce19-f8e8-469c-a537-a46ded016baf",
   "pr_summary": "This PR adds new functionality to the codebase.",
   "verdict": "request_changes",
   "verdict_reason": "The review found critical-severity issues requiring attention.",
@@ -12,148 +12,48 @@
       "category": "performance",
       "severity": "critical",
       "title": "Infinite Loop with No Timeout or Retry Limit",
-      "description": "The while loop in the pollOrderStatus function will run indefinitely if the order status never changes from 'pending'. This can cause the service to hold the thread/connection/memory indefinitely, leading to performance and reliability issues.",
-      "suggestion": "Add a timeout or retry limit to the while loop, e.g., let maxAttempts = 10; let attempt = 0; while (status === 'pending' && attempt < maxAttempts) { ... }"
+      "description": "The while loop in the pollOrderStatus function will run indefinitely if the order status never changes, holding the thread/connection/memory indefinitely.",
+      "suggestion": "Add a maximum iteration count, a timeout, or a circuit breaker to prevent the loop from running indefinitely."
     },
     {
       "id": "F-002",
       "line": 5,
-      "line_content": "order.status = 'cancelled';",
-      "category": "correctness",
-      "severity": "high",
-      "title": "NULL DEREFERENCE",
-      "description": "If the orderRepo.findById(orderId) returns null or undefined, this line will throw a TypeError. This can happen if the order with the given orderId does not exist in the database.",
-      "suggestion": "Add a null check before accessing the order object: if (!order) { throw new Error(`Order not found with id ${orderId}`); }"
-    },
-    {
-      "id": "F-003",
-      "line": 5,
       "line_content": "export async function cancelOrder(orderId: string, userId: string): Promise<void> {",
       "category": "test_coverage",
       "severity": "high",
-      "title": "Missing test: cancelOrder called with unauthorized userId",
-      "description": "This test is important because it would catch a potential security issue when trying to cancel an order with an unauthorized userId. The function does not check for this case and would allow unauthorized access.",
-      "suggestion": "Test cancelOrder with an unauthorized userId, expecting an error to be thrown. Mock orderRepo.findById to return an order with a different userId."
+      "title": "Missing test: cancelOrder called with null or undefined orderId",
+      "description": "This test is important because it would catch a potential crash when trying to cancel an order with a null or undefined orderId. The function does not check for null or undefined orderId before trying to find the order in the database.",
+      "suggestion": "Test cancelOrder with null and undefined orderId, and verify that it throws an error or handles it correctly."
+    },
+    {
+      "id": "F-003",
+      "line": 10,
+      "line_content": "await notificationService.send(order.userEmail, 'Order cancelled');",
+      "category": "correctness",
+      "severity": "high",
+      "title": "NULL DEREFERENCE",
+      "description": "If the orderRepo.findById(orderId) returns null or undefined, accessing order.userEmail will throw a TypeError or NullPointerException, causing a production crash.",
+      "suggestion": "Add a null check before accessing order properties: if (order) { ... } else { throw new Error(`Order not found: ${orderId}`); }"
     },
     {
       "id": "F-004",
-      "line": 8,
-      "line_content": "await notificationService.send(order.userEmail, 'Order cancelled');",
-      "category": "correctness",
+      "line": 25,
+      "line_content": "export async function bulkCancelOrders(orderIds: string[]): Promise<void> {",
+      "category": "test_coverage",
       "severity": "high",
-      "title": "NULL DEREFERENCE",
-      "description": "If the orderRepo.findById(orderId) returns null or undefined, this line will throw a TypeError. This can happen if the order with the given orderId does not exist in the database.",
-      "suggestion": "Add a null check before accessing the order object: if (!order) { throw new Error(`Order not found with id ${orderId}`); }"
+      "title": "Missing test: bulkCancelOrders called with null or undefined orderIds",
+      "description": "This test is important because it would catch a potential crash when trying to cancel orders with a null or undefined orderIds. The function does not check for null or undefined orderIds before trying to cancel the orders.",
+      "suggestion": "Test bulkCancelOrders with null and undefined orderIds, and verify that it throws an error or handles it correctly."
     },
     {
       "id": "F-005",
-      "line": 14,
-      "line_content": "status = order.status;",
-      "category": "correctness",
-      "severity": "high",
-      "title": "NULL DEREFERENCE",
-      "description": "If the orderRepo.findById(orderId) returns null or undefined, this line will throw a TypeError. This can happen if the order with the given orderId does not exist in the database.",
-      "suggestion": "Add a null check before accessing the order object: if (!order) { throw new Error(`Order not found with id ${orderId}`); }"
-    },
-    {
-      "id": "F-006",
-      "line": 14,
-      "line_content": "export async function pollOrderStatus(orderId: string): Promise<string> {",
-      "category": "test_coverage",
-      "severity": "high",
-      "title": "Missing test: pollOrderStatus called with orderRepo.findById throwing an error",
-      "description": "This test is important because it would catch a potential issue when trying to poll the status of an order and the orderRepo.findById call throws an error. The function does not handle this case and would throw an error.",
-      "suggestion": "Test pollOrderStatus with orderRepo.findById throwing an error, expecting the error to be caught and handled."
-    },
-    {
-      "id": "F-007",
-      "line": 20,
-      "line_content": "await cancelOrder(id, 'system');",
-      "category": "security",
-      "severity": "high",
-      "title": "Missing Authentication on Sensitive Endpoint",
-      "description": "The bulkCancelOrders function cancels orders without verifying the caller's authentication or authorization. An attacker could potentially exploit this vulnerability to cancel orders without permission.",
-      "suggestion": "Add authentication and authorization checks to ensure only authorized users can cancel orders."
-    },
-    {
-      "id": "F-008",
-      "line": 25,
-      "line_content": "for (const id of orderIds) {",
-      "category": "performance",
-      "severity": "high",
-      "title": "Sequential Async Operations That Should Be Parallel",
-      "description": "The bulkCancelOrders function cancels orders sequentially, which can lead to performance issues for large numbers of orders. This can be improved by using Promise.all() to cancel orders in parallel.",
-      "suggestion": "Replace the for loop with Promise.all(), e.g., await Promise.all(orderIds.map(id => cancelOrder(id, 'system')))"
-    },
-    {
-      "id": "F-009",
-      "line": 5,
-      "line_content": "order.status = 'cancelled';",
-      "category": "security",
-      "severity": "medium",
-      "title": "Unvalidated User Input",
-      "description": "The order status is updated directly without validating the input. An attacker could potentially manipulate the order status by exploiting this vulnerability. The input should be validated to ensure it conforms to expected values.",
-      "suggestion": "Add input validation to ensure the order status is one of the expected values, e.g., 'pending', 'cancelled', 'shipped', etc."
-    },
-    {
-      "id": "F-010",
-      "line": 9,
-      "line_content": "await notificationService.send(order.userEmail, 'Order cancelled');",
-      "category": "security",
-      "severity": "medium",
-      "title": "Unvalidated User Input",
-      "description": "The userEmail is used directly without validation. An attacker could potentially manipulate the userEmail by exploiting this vulnerability. The input should be validated to ensure it conforms to expected values.",
-      "suggestion": "Add input validation to ensure the userEmail is a valid email address and belongs to the order's owner."
-    },
-    {
-      "id": "F-011",
-      "line": 14,
-      "line_content": "while (status === 'pending') {",
-      "category": "style",
-      "severity": "medium",
-      "title": "Potential Infinite Loop",
-      "description": "The pollOrderStatus function may enter an infinite loop if the order status never changes from 'pending'. A timeout or a maximum number of retries should be implemented to prevent this.",
-      "suggestion": "Add a timeout or a maximum number of retries to the pollOrderStatus function, e.g., 'let retries = 0; while (status === 'pending' && retries < 10) { ... }'"
-    },
-    {
-      "id": "F-012",
-      "line": 24,
+      "line": 29,
       "line_content": "return price * (1 - discounts[discountCode]);",
       "category": "correctness",
       "severity": "medium",
-      "title": "MISSING INPUT VALIDATION",
-      "description": "This function does not validate the input price or discountCode. If the price is not a number or the discountCode is not a string, this line will throw a TypeError.",
-      "suggestion": "Add input validation: if (typeof price !== 'number') { throw new Error('Price must be a number'); } if (typeof discountCode !== 'string') { throw new Error('Discount code must be a string'); }"
-    },
-    {
-      "id": "F-013",
-      "line": 25,
-      "line_content": "return price * (1 - discounts[discountCode]);",
-      "category": "security",
-      "severity": "medium",
-      "title": "Unvalidated User Input",
-      "description": "The discountCode is used to access the discounts object without validation. An attacker could potentially manipulate the discountCode by exploiting this vulnerability. The input should be validated to ensure it conforms to expected values.",
-      "suggestion": "Add input validation to ensure the discountCode is a valid key in the discounts object."
-    },
-    {
-      "id": "F-014",
-      "line": 25,
-      "line_content": "const discounts: any = { SAVE10: 0.1, SAVE20: 0.2, SAVE50: 0.5 };",
-      "category": "style",
-      "severity": "medium",
-      "title": "Hardcoded Values",
-      "description": "The discount codes and their corresponding values are hardcoded and should be externalized to a configuration file, database, or environment variable for easier maintenance and updates.",
-      "suggestion": "Externalize the discount codes and values to a configuration file, database, or environment variable, e.g., 'const discounts = getConfiguredDiscounts();'"
-    },
-    {
-      "id": "F-015",
-      "line": 14,
-      "line_content": "while (status === 'pending') {",
-      "category": "security",
-      "severity": "low",
-      "title": "Potential Denial of Service",
-      "description": "The pollOrderStatus function may potentially enter an infinite loop if the order status is not updated. This could lead to a denial of service attack.",
-      "suggestion": "Add a timeout or a maximum number of retries to prevent the function from entering an infinite loop."
+      "title": "SILENT UNDEFINED / NaN PROPAGATION",
+      "description": "If the discountCode is not found in the discounts object, the function will return NaN, which can corrupt downstream calculations without throwing an error.",
+      "suggestion": "Add a check for undefined discountCode: if (!(discountCode in discounts)) { throw new Error(`Invalid discountCode: ${discountCode}`); }"
     }
   ],
   "positive_observations": [
@@ -161,16 +61,16 @@
     "Function naming is clear and descriptive."
   ],
   "missing_tests": [
-    "This test is important because it would catch a potential security issue when trying to cancel an order with an unauthorized userId. The function does not check for this case and would allow unauthorized access.",
-    "This test is important because it would catch a potential issue when trying to poll the status of an order and the orderRepo.findById call throws an error. The function does not handle this case and would throw an error."
+    "This test is important because it would catch a potential crash when trying to cancel an order with a null or undefined orderId. The function does not check for null or undefined orderId before trying to find the order in the database.",
+    "This test is important because it would catch a potential crash when trying to cancel orders with a null or undefined orderIds. The function does not check for null or undefined orderIds before trying to cancel the orders."
   ],
   "agent_findings_count": {
-    "security": 5,
-    "performance": 2,
-    "correctness": 4,
-    "style": 2,
+    "security": 0,
+    "performance": 1,
+    "correctness": 2,
+    "style": 0,
     "test_coverage": 2
   },
-  "processing_time_ms": 54333,
-  "created_at": "2026-06-17T11:29:21.892039"
+  "processing_time_ms": 37487,
+  "created_at": "2026-06-17T16:03:03.049457"
 }

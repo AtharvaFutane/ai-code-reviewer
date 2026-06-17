@@ -56,30 +56,24 @@ def _compute_verdict(overall_severity: str) -> str:
 
 def _deduplicate_findings(findings: List[Dict]) -> List[Dict]:
     """
-    Remove duplicate findings from overlapping agent reports.
-    
-    Two findings are considered duplicates if:
-    - They have the same category (e.g., both "security")
-    - Their line numbers are within 2 lines of each other
-    
-    When duplicates are found, keep the one with HIGHER severity.
-    If equal severity, keep the one with the longer description (more detail).
+    Merge findings that flag the same lines.
+    If two findings flag within 2 lines of each other, keep the one with higher severity.
+    If severity is tied, keep the one with the longer description.
     """
     seen: List[Dict] = []
     for candidate in findings:
         is_duplicate = False
         for i, existing in enumerate(seen):
-            if existing["category"] != candidate["category"]:
-                continue
-            line_distance = abs(existing["line"] - candidate["line"])
-            if line_distance <= 2:
-                # Duplicate found — keep the more severe one
-                cand_rank = SEVERITY_RANK.get(candidate.get("severity", "low"), 1)
-                exist_rank = SEVERITY_RANK.get(existing.get("severity", "low"), 1)
-                if cand_rank > exist_rank:
-                    seen[i] = candidate  # replace with more severe
-                elif cand_rank == exist_rank:
-                    # Same severity — keep the more detailed description
+            # Same or adjacent lines -> duplicate (regardless of category)
+            if abs(existing["line"] - candidate["line"]) <= 2:
+                # Merge logic: keep the higher severity one
+                existing_rank = SEVERITY_RANK.get(existing.get("severity", "low"), 1)
+                candidate_rank = SEVERITY_RANK.get(candidate.get("severity", "low"), 1)
+                
+                if candidate_rank > existing_rank:
+                    seen[i] = candidate  # Replace with the more severe one
+                elif candidate_rank == existing_rank:
+                    # Tie-breaker: keep the one with more detail
                     if len(candidate.get("description", "")) > len(existing.get("description", "")):
                         seen[i] = candidate
                 is_duplicate = True
