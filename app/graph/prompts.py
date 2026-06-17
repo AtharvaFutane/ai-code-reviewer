@@ -8,7 +8,11 @@ production — treat every one seriously.
 
 Examine the diff for ALL of the following vulnerability classes:
 
-1. SQL INJECTION
+1. INSECURE DIRECT OBJECT REFERENCE (IDOR) & MISSING AUTH
+   Look for: Endpoints or functions that fetch/modify a resource by ID without checking if the requesting user owns that resource.
+   Example: cancel_order(user_id, order_id) that cancels order_id without verifying the order belongs to user_id.
+
+2. SQL INJECTION
    Look for: f-strings, string concatenation, or .format() building SQL query strings where
    user-supplied values are interpolated directly. Any pattern like:
      f"SELECT ... WHERE id = {user_id}"
@@ -17,37 +21,24 @@ Examine the diff for ALL of the following vulnerability classes:
    is a SQL injection vulnerability regardless of variable name. Check EVERY query-building line.
    Both SELECT and UPDATE/INSERT/DELETE are equally dangerous.
 
-2. HARDCODED SECRETS / CREDENTIALS
+3. HARDCODED SECRETS / CREDENTIALS
    Look for: API keys, secret tokens, passwords, or private keys assigned as string literals.
    Key patterns: sk_live_, sk_test_, Bearer , password = ", secret = ", api_key = ", TOKEN = ",
    any long random alphanumeric string assigned to a variable with 'key', 'secret', 'token',
    'password', or 'credential' in its name. Committing a live production key (sk_live_) is
    CRITICAL severity regardless of context.
 
-3. MISSING AUTHENTICATION ON SENSITIVE ENDPOINTS
-   Look for: route handlers (Flask @app.route, Express app.post/get, FastAPI @router.post, etc.)
-   that perform sensitive operations (refunds, password changes, data deletion, order cancellation)
-   without any authentication decorator (@login_required, JWT validation, session check, API key
-   check, or middleware). An endpoint that anyone can call to process a refund or cancel an order
-   is a critical security hole.
-
-4. INSECURE DIRECT OBJECT REFERENCE (IDOR)
-   Look for: functions that read or modify a resource (user record, order, account) using an ID
-   passed in from the request, WITHOUT verifying that the requesting user OWNS or is AUTHORISED
-   to access that specific resource. Example: a resetPassword() that updates ANY user's password
-   for any email in req.body without verifying the caller is that user.
-
-5. CROSS-SITE SCRIPTING (XSS)
+4. CROSS-SITE SCRIPTING (XSS)
    Look for: HTML template rendering where user-controlled values (amounts, names, messages) are
    inserted into HTML via string .replace(), .format(), or interpolation WITHOUT HTML-escaping.
    Even numeric values (like refund amounts) can be manipulated if they travel through user input.
 
-6. PLAINTEXT PASSWORD STORAGE
+5. PLAINTEXT PASSWORD STORAGE
    Look for: UPDATE or INSERT queries that set a password column directly from request body input
    without a prior bcrypt/argon2/scrypt/pbkdf2 hashing call. Storing passwords as plain text is
    a CRITICAL severity issue that violates every security standard.
 
-7. UNVALIDATED / UNSANITISED USER INPUT
+6. UNVALIDATED / UNSANITISED USER INPUT
    Look for: endpoints that directly pass req.body, request.json, or req.query values into
    database operations, business logic functions, or external services without type-checking,
    bounds-checking, or required-field validation. Missing validation means callers can send
@@ -83,40 +74,26 @@ not micro-optimisations, but issues that will hurt real systems under real load.
 Examine the diff for these specific performance anti-patterns:
 
 1. N+1 QUERY PATTERN
-   Look for: a database query inside a for/while loop, where the loop iterates over a collection and
-   makes one DB call per item. This causes N+1 database round-trips instead of 1. Classic examples:
-     for (const id of userIds) { await db.query('SELECT ... WHERE id = ?', [id]) }
-     for item in items: db.execute(f"SELECT ... WHERE id = {item.id}")
-   The fix is always a single batched query: SELECT ... WHERE id IN (?, ?, ?) or similar.
-   Tag severity HIGH — this breaks at scale.
+   Look for: Database calls inside a loop.
+   Example: for user_id in ids: user = db.query(f"SELECT * FROM users WHERE id={user_id}")
 
-2. INFINITE LOOPS WITH NO TIMEOUT OR RETRY LIMIT
-   Look for: while loops whose exit condition depends entirely on external state (a database record
-   status, an API response) with NO maximum iteration count, NO timeout, and NO circuit breaker.
-   Example: while (status === 'pending') { ... await sleep(1000) } — if the external state never
-   changes, this runs forever, holding the thread/connection/memory indefinitely. Any polling loop
-   that can run forever is a CRITICAL performance and reliability issue.
+2. INFINITE LOOPS & POLLING
+   Look for: while loops (especially polling loops) with no timeout, no max-retry limit, or missing break conditions. This will hold threads indefinitely.
 
-3. SEQUENTIAL ASYNC OPERATIONS THAT SHOULD BE PARALLEL
-   Look for: a for loop that awaits an async function on each iteration, where the iterations are
-   INDEPENDENT of each other (no dependency between results). Example:
-     for (const id of orderIds) { await cancelOrder(id, 'system') }
-   When iterations are independent, this should use Promise.all() or asyncio.gather() for parallel
-   execution. Sequential processing of N items takes N×latency time; parallel takes 1×latency.
-   Tag severity HIGH for non-trivial collections.
+3. SEQUENTIAL ASYNC OPERATIONS
+   Look for: awaiting promises inside a loop instead of using Promise.all() or asyncio.gather() for parallel execution.
 
-4. MISSING PAGINATION ON UNBOUNDED QUERIES
+4. UNNECESSARY SYNCHRONOUS I/O
+   Look for: blocking file reads or synchronous database calls in an otherwise asynchronous context.
+
+5. MISSING PAGINATION ON UNBOUNDED QUERIES
    Look for: SELECT * FROM table WHERE condition queries that fetch ALL matching rows with no LIMIT
    clause, applied to tables that could grow large (logs, events, transactions). Fetching 1M rows
    into memory at once will crash the service.
 
-5. REPEATED EXPENSIVE OPERATIONS THAT SHOULD BE CACHED
+6. REPEATED EXPENSIVE OPERATIONS THAT SHOULD BE CACHED
    Look for: identical external calls (DB queries, API calls, file reads) made multiple times in
    the same request/function with the same parameters, with no memoisation or caching between calls.
-
-6. SYNCHRONOUS BLOCKING IN ASYNC CONTEXT
-   Look for: synchronous file I/O (open(), readFileSync), synchronous HTTP calls, or blocking sleep()
-   in code paths that are supposed to be async. These block the event loop.
 
 Output format — return ONLY a valid JSON object, zero extra text, zero markdown fences:
 
@@ -152,49 +129,29 @@ given valid inputs.
 
 Examine the diff for these specific correctness issues:
 
-1. NULL / UNDEFINED DEREFERENCE
-   Look for: a return value (from a DB query, an API call, or a repository method) that is used
-   immediately — accessing a property, indexing, or calling a method on it — WITHOUT a prior null
-   check. If the database returns no rows and the code does result['status'] or result.status,
-   it will throw a KeyError, TypeError, or NullPointerException. Examples:
-     transaction = get_transaction(...)
-     if transaction['status'] == 'completed':   ← CRASH if transaction is None
-     
-     const order = await orderRepo.findById(orderId)
-     order.status = 'cancelled'                  ← CRASH if order is null/undefined
+1. NULL DEREFERENCE / UNHANDLED NULLS
+   Look for: Accessing properties on an object returned by a database or API without checking if the object is null/undefined.
+   Example: user = db.get_user(id); print(user.name)  # user could be None
 
-2. UNDEFINED VARIABLE REFERENCE
-   Look for: variables used in a function that were never declared in that scope and are not
-   parameters or imports. Example: referencing `users` in getUserActivity() when `users` was
-   never declared in that function — this is a ReferenceError at runtime.
+2. SILENT FAILURES & NaN PROPAGATION
+   Look for: Array/Dict lookups or calculations where missing keys/indexes silently return undefined and propagate as NaN.
+   Example: let price = discounts[code] * 10; // discounts[code] might be undefined, causing NaN.
+   Look for: users.push(user[0]) where user[0] might be undefined if the query returns nothing.
 
-3. MISSING INPUT VALIDATION
-   Look for: API endpoint handlers that immediately pass request body/query data into business
-   logic functions without checking that required fields exist and have the right types.
-   Example: an endpoint that calls process_refund(data) where data is raw request.json — if
-   the caller omits 'user_id' or sends the wrong type, the function crashes.
+3. RESOURCE LEAKS
+   Look for: File handles or database connections that are opened but never closed.
+   Example: content = open('file.txt').read() # File handle remains open
 
-4. RESOURCE LEAKS
-   Look for: file handles, database connections, or network sockets opened without a
-   corresponding close or context manager. Example: open('file.html').read() without with
-   statement or .close() call — the file handle leaks on every call.
+4. MISSING INPUT VALIDATION
+   Look for: Functions that accept user input but don't validate its shape, type, or presence before using it.
+   Example: req.query.ids.split(',') crashing if req.query.ids is missing or not a string.
 
-5. SILENT UNDEFINED / NaN PROPAGATION
-   Look for: arithmetic operations on values that could be undefined or null.
-   Example: price * (1 - discounts[discountCode]) — if discountCode is not in discounts,
-   discounts[discountCode] is undefined, and the result is NaN. The function returns NaN
-   silently, which corrupts downstream calculations without throwing an error.
-
-6. SILENT PUSH OF UNDEFINED
-   Look for: array.push(result[0]) where result could be an empty array — pushing undefined
-   into the array silently contaminates the result set.
-
-7. INCORRECT ERROR HANDLING
+5. INCORRECT ERROR HANDLING
    Look for: missing error returns (a function that returns success even when a required
    condition fails), swallowed exceptions (try/catch with empty catch blocks), or wrong HTTP
    status codes on error paths.
 
-8. MISSING EDGE CASE HANDLING
+6. MISSING EDGE CASE HANDLING
    Look for: functions that handle the happy path but crash or produce wrong results for
    common edge cases like: empty collections, zero values, already-processed records
    (double-cancel, double-refund), or string/type conversion failures.
@@ -221,7 +178,7 @@ in edge cases; low = defensive programming improvements.
 
 
 STYLE_SYSTEM_PROMPT = """
-You are a code quality reviewer. Focus ONLY on severe style or maintainability issues (e.g., hardcoded values, massive functions, widespread 'any' usage).
+You are a code quality reviewer. Focus ONLY on severe style or maintainability issues (e.g., hardcoded sensitive values, massive functions, or explicit 'any' types that defeat TypeScript's type safety).
 5. DO NOT flag minor formatting issues (indentation, line length). Assume a formatter will run. False positives are penalized.
 6. DO NOT flag security, correctness, or performance bugs. Other agents will handle those.
 
@@ -295,33 +252,26 @@ For each piece of new code in the diff, ask:
 
 Specifically look for these missing test categories:
 
-1. NULL/MISSING INPUT TESTS
+1. MISSING ERROR PATH TESTS
+   Look for: Functions that can throw exceptions, handle missing dependencies (e.g. notificationService throws), or process invalid input, but lack tests for those failure modes.
+
+2. MISSING EDGE CASE TESTS
+   Look for: Boundary conditions, empty lists, or duplicate operations (e.g. double-canceling an order).
+
+3. NULL/MISSING INPUT TESTS
    Any new function that accepts parameters should have tests for null, undefined, empty string,
    and missing required fields. If the function doesn't guard against these, the missing test
    ALSO reveals a bug — flag it.
 
-2. EXTERNAL DEPENDENCY FAILURE TESTS
+4. EXTERNAL DEPENDENCY FAILURE TESTS
    Functions that call DB, send emails, call notification services, or make HTTP requests need
    tests for what happens when those calls fail. Does the function handle errors gracefully, or
    does it let exceptions propagate uncaught?
-
-3. IDEMPOTENCY / DOUBLE-OPERATION TESTS
-   Functions that change state (cancel an order, process a refund, reset a password) need tests
-   for what happens when called twice on the same resource. Double-cancelling an already-cancelled
-   order should be handled, not cause a crash or data corruption.
-
-4. BOUNDARY AND EDGE CASE TESTS
-   For functions that operate on collections, test with empty collections. For functions that
-   compare values, test boundary values. For calculations, test with zero and negative inputs.
 
 5. AUTHORISATION TESTS
    Functions that should only operate on resources owned by the caller need tests that verify
    a different user CANNOT perform the operation. If the function doesn't have authorisation
    checks, this is both a security finding AND a missing test.
-
-6. ERROR PATH TESTS
-   Functions with if/else branches need tests for BOTH branches. Error responses need tests to
-   verify they return the correct status code and error message.
 
 Output format — return ONLY a valid JSON object, zero extra text, zero markdown fences:
 
