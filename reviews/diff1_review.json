@@ -1,0 +1,93 @@
+{
+  "review_id": "4aeba552-6289-4547-b453-18e8c48269e9",
+  "pr_summary": "This PR adds new functionality to the codebase.",
+  "verdict": "request_changes",
+  "verdict_reason": "The review found critical-severity issues requiring attention.",
+  "overall_severity": "critical",
+  "findings": [
+    {
+      "id": "F-001",
+      "line": 6,
+      "line_content": "query = f\"SELECT * FROM transactions WHERE user_id = {user_id}\"",
+      "category": "security",
+      "severity": "critical",
+      "title": "SQL Injection via f-string interpolation",
+      "description": "This line is vulnerable to SQL injection because it directly interpolates user-supplied values into a SQL query string. An attacker could manipulate the user_id to inject malicious SQL code, potentially leading to data breaches or system compromise.",
+      "suggestion": "Use parameterized queries instead, e.g., query = \"SELECT * FROM transactions WHERE user_id = %s\"; db.execute(query, (user_id,))"
+    },
+    {
+      "id": "F-002",
+      "line": 10,
+      "line_content": "db.execute(\"UPDATE transactions SET status='refunded' WHERE id=\" + str(transaction['id']))",
+      "category": "security",
+      "severity": "critical",
+      "title": "SQL Injection via string concatenation",
+      "description": "This line is vulnerable to SQL injection because it concatenates user-supplied values into a SQL query string. An attacker could manipulate the transaction['id'] to inject malicious SQL code, potentially leading to data breaches or system compromise.",
+      "suggestion": "Use parameterized queries instead, e.g., query = \"UPDATE transactions SET status='refunded' WHERE id = %s\"; db.execute(query, (transaction['id'],))"
+    },
+    {
+      "id": "F-003",
+      "line": 20,
+      "line_content": "STRIPE_SECRET_KEY = 'sk_live_4eC39HqLyjWDarjtT1zdp7dc'",
+      "category": "security",
+      "severity": "critical",
+      "title": "Hardcoded Secret Key",
+      "description": "This line exposes a live Stripe secret key, which is a critical security risk. An attacker could use this key to access sensitive payment information or perform unauthorized transactions.",
+      "suggestion": "Store the secret key securely using environment variables or a secrets management system, and never commit it to version control"
+    },
+    {
+      "id": "F-004",
+      "line": 14,
+      "line_content": "body = template.replace('{{message}}', message)",
+      "category": "security",
+      "severity": "high",
+      "title": "Cross-Site Scripting (XSS) via unescaped template replacement",
+      "description": "This line is vulnerable to XSS because it inserts user-controlled values into an HTML template without proper escaping. An attacker could manipulate the message to inject malicious JavaScript code, potentially leading to session hijacking or other security issues.",
+      "suggestion": "Use a templating engine that automatically escapes user-controlled values, or manually escape the message using a library like html.escape()"
+    },
+    {
+      "id": "F-005",
+      "line": 25,
+      "line_content": "STRIPE_SECRET_KEY = 'sk_live_4eC39HqLyjWDarjtT1zdp7dc'",
+      "category": "style",
+      "severity": "high",
+      "title": "Sensitive value hardcoded",
+      "description": "The Stripe secret key is hardcoded, which is a security risk. Sensitive values should be stored securely, such as in environment variables or a secure configuration file.",
+      "suggestion": "Store the Stripe secret key in an environment variable or a secure configuration file, and then load it into the code."
+    },
+    {
+      "id": "F-006",
+      "line": 1,
+      "line_content": "+def get_transaction(user_id, transaction_id):",
+      "category": "style",
+      "severity": "medium",
+      "title": "Function does multiple things",
+      "description": "The get_transaction function not only retrieves a transaction but also constructs the SQL query. Consider breaking it down into smaller functions.",
+      "suggestion": "Consider breaking down the get_transaction function into smaller functions, each with a single responsibility."
+    },
+    {
+      "id": "F-007",
+      "line": 17,
+      "line_content": "template = open('templates/email.html').read()",
+      "category": "performance",
+      "severity": "medium",
+      "title": "Unnecessary Synchronous I/O",
+      "description": "The send_notification function reads a file synchronously, which can block the execution of the program and cause performance issues. This is especially problematic in an asynchronous context.",
+      "suggestion": "Consider using an asynchronous file reading mechanism or caching the file contents to reduce the performance impact."
+    }
+  ],
+  "positive_observations": [
+    "The code follows a consistent structure.",
+    "Function naming is clear and descriptive."
+  ],
+  "missing_tests": [],
+  "agent_findings_count": {
+    "security": 4,
+    "performance": 1,
+    "correctness": 0,
+    "style": 2,
+    "test_coverage": 0
+  },
+  "processing_time_ms": 9945,
+  "created_at": "2026-06-18T10:15:11.756831"
+}

@@ -1,0 +1,83 @@
+{
+  "review_id": "125746d7-ef3f-4e2b-b2c5-c6d69d549030",
+  "pr_summary": "This PR adds new functionality to the codebase.",
+  "verdict": "request_changes",
+  "verdict_reason": "The review found critical-severity issues requiring attention.",
+  "overall_severity": "critical",
+  "findings": [
+    {
+      "id": "F-001",
+      "line": 14,
+      "line_content": "while (status === 'pending') {",
+      "category": "performance",
+      "severity": "critical",
+      "title": "Infinite Loop with No Timeout",
+      "description": "The while loop in the pollOrderStatus function will continue indefinitely if the order status remains 'pending'. This can cause the service to hang and consume excessive resources.",
+      "suggestion": "Add a timeout or a maximum number of retries to the loop to prevent it from running indefinitely."
+    },
+    {
+      "id": "F-002",
+      "line": 6,
+      "line_content": "order.status = 'cancelled';",
+      "category": "security",
+      "severity": "high",
+      "title": "INSECURE DIRECT OBJECT REFERENCE (IDOR) in Order Cancellation",
+      "description": "The cancelOrder function does not verify if the requesting user owns the order being cancelled, allowing an attacker to cancel any order. This is a high-severity issue as it allows unauthorized access to sensitive data.",
+      "suggestion": "Add a check to ensure the order belongs to the requesting user, e.g., `if (order.userId !== userId) { throw new Error('Unauthorized'); }`"
+    },
+    {
+      "id": "F-003",
+      "line": 9,
+      "line_content": "await notificationService.send(order.userEmail, 'Order cancelled');",
+      "category": "correctness",
+      "severity": "high",
+      "title": "NULL DEREFERENCE / UNHANDLED NULLS",
+      "description": "The order.userEmail is not checked for null before passing it to the notification service, which can cause a null pointer exception if the email is not set.",
+      "suggestion": "Add a null check: if (!order.userEmail) { throw new Error(`User email not found for order: ${orderId}`); }"
+    },
+    {
+      "id": "F-004",
+      "line": 17,
+      "line_content": "const order = await orderRepo.findById(orderId);",
+      "category": "security",
+      "severity": "high",
+      "title": "INSECURE DIRECT OBJECT REFERENCE (IDOR) in Order Status Polling",
+      "description": "The pollOrderStatus function does not verify if the requesting user owns the order being polled, allowing an attacker to access sensitive data.",
+      "suggestion": "Add a check to ensure the order belongs to the requesting user, e.g., `if (order.userId !== userId) { throw new Error('Unauthorized'); }`"
+    },
+    {
+      "id": "F-005",
+      "line": 24,
+      "line_content": "await cancelOrder(id, 'system');",
+      "category": "performance",
+      "severity": "high",
+      "title": "Sequential Async Operations",
+      "description": "The bulkCancelOrders function cancels orders sequentially, which can lead to performance issues when dealing with a large number of orders. This can cause the service to slow down and become unresponsive.",
+      "suggestion": "Use Promise.all() or a similar mechanism to cancel orders in parallel, improving the overall performance of the function."
+    },
+    {
+      "id": "F-006",
+      "line": 28,
+      "line_content": "export async function bulkCancelOrders(orderIds: string[]): Promise<void> {",
+      "category": "correctness",
+      "severity": "medium",
+      "title": "MISSING INPUT VALIDATION",
+      "description": "The function does not check if the orderIds array is empty or null, which can cause incorrect results.",
+      "suggestion": "Add a check: if (!orderIds || orderIds.length === 0) { throw new Error('No order IDs provided'); }"
+    }
+  ],
+  "positive_observations": [
+    "The code follows a consistent structure.",
+    "Function naming is clear and descriptive."
+  ],
+  "missing_tests": [],
+  "agent_findings_count": {
+    "security": 2,
+    "performance": 2,
+    "correctness": 2,
+    "style": 0,
+    "test_coverage": 0
+  },
+  "processing_time_ms": 48771,
+  "created_at": "2026-06-18T10:16:29.278902"
+}
