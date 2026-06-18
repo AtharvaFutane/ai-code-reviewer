@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import asyncio
 from typing import Any, Dict, List, Optional
 
 from langchain_core.messages import HumanMessage, SystemMessage
@@ -35,12 +36,23 @@ def get_llm(model_override: Optional[str] = None) -> ChatGroq:
     )
 
 
+_llm_semaphore = asyncio.Semaphore(2)
+
 @retry(
     retry=retry_if_exception_type(Exception),
     stop=stop_after_attempt(3),
     wait=wait_exponential(multiplier=1, min=2, max=10),
     reraise=True,
 )
+async def _invoke_single_llm(
+    llm: ChatGroq,
+    messages: list,
+) -> str:
+    async with _llm_semaphore:
+        response = await llm.ainvoke(messages)
+        return response.content
+
+
 async def invoke_llm_with_retry(
     llm: ChatGroq,
     system_prompt: str,
@@ -51,14 +63,22 @@ async def invoke_llm_with_retry(
     Returns the raw string content of the model response.
     
     Retry policy: up to 3 attempts, exponential backoff 2s→4s→8s.
-    On final failure, the exception propagates to the caller.
+    On final failure, it will attempt to use the fallback model configured in GROQ_FALLBACK_MODEL.
     """
     messages = [
         SystemMessage(content=system_prompt),
         HumanMessage(content=user_message),
     ]
-    response = await llm.ainvoke(messages)
-    return response.content
+    try:
+        return await _invoke_single_llm(llm, messages)
+    except Exception as e:
+        fallback_model = os.getenv("GROQ_FALLBACK_MODEL", "llama-3.1-8b-instant")
+        if getattr(llm, "model_name", "") != fallback_model:
+            import logging
+            logging.getLogger(__name__).warning(f"Model {getattr(llm, 'model_name', 'unknown')} failed: {e}. Falling back to {fallback_model}.")
+            fallback_llm = get_llm(model_override=fallback_model)
+            return await _invoke_single_llm(fallback_llm, messages)
+        raise
 
 
 def extract_json_from_response(text: str) -> Dict[str, Any]:
